@@ -114,7 +114,7 @@ duplex_configurations:insert {
           color = {0x00,0x00,0x00}
         },
         key_released_content = {
-          color = {0x40,0x00,0x00}
+          color = {0x40,0x40,0x40}
         },
         key_released_selected = {
           color = {0xC0,0x00,0x00}
