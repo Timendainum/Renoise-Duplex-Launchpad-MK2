@@ -16,19 +16,21 @@ A device-specific class
 
 class "LaunchpadMK2" (MidiDevice)
 
+
 color_reference_12 = {
-  {63,0,0}, --RED
-  {63,31,0}, --ORANGE 
-  {63,63,0}, --YELLOW 
-  {31,63,0}, --CHARTREUSE 
-  {0,63,0}, --GREEN 
-  {0,63,31}, --SPRING 
-  {0,63,63}, --CYAN 
-  {0,31,63}, --AZURE 
-  {0,0,63}, --BLUE 
-  {31,0,63}, --VIOLET 
-  {63,0,63}, --MAGENTA 
-  {63,0,31}, --PURPLE 
+  {63,0,0}, --RED             C
+  {0,15,47}, --AZURE          C#
+  {31,31,0}, --YELLOW         D
+  {15,0,47}, --VIOLET         D#
+  {0,63,0}, --GREEN           E
+  {47,0,15}, --PURPLE         F 
+  {0,31,31}, --CYAN           F#
+  {47,15,0}, --ORANGE         G
+  {0,0,63}, --BLUE            G#
+  {15,47,0}, --CHARTREUSE     A
+  {31,0,31}, --MAGENTA        A#
+  {0,47,15}, --SPRING         B
+
 }
 
 function LaunchpadMK2:__init(display_name, message_stream, port_in, port_out)
@@ -48,7 +50,10 @@ end
 
 function LaunchpadMK2:release()
   TRACE("LaunchpadMK2:release()")
-
+  
+  --clears the display
+  self:send_sysex_message(0x00, 0x20, 0x29, 0x02, 0x18, 0x0E, 0x00)
+ 
   self:send_cc_message(0,0) 
   MidiDevice.release(self)
 
@@ -68,10 +73,16 @@ function LaunchpadMK2:output_value(pt,xarg,ui_obj)
 
     --print("launchpad output value...",rprint(pt.color))
     
-    
     local skip_hardware = true
     local rainbow_mode = true --toggle for fun times :D
-    --rprint(xarg) 
+    
+    --[[  colorset 1 - bold colors
+          colorset 2 - pastel colors
+          colorset 3 - more pastel colors
+          ]]
+    local color_set = 3
+    -- set from 0 to 11 to change the color of the root
+    local color_offset = 11
     
     local sysex_num = nil
     local sysex_color = {}
@@ -79,32 +90,78 @@ function LaunchpadMK2:output_value(pt,xarg,ui_obj)
     if (sysex_num == nil) then
       sysex_num = self:extract_midi_cc(xarg.value)
     end
-    
-       
+  
     local rslt = 0
+
+    local pitch = tonumber(pt.text)
+    
+        if rainbow_mode and pt.val and (xarg.group_name == "LargeGrid") and pitch then
+                   
+          local note_value = (pitch%12)+1
           
-    for i=1, 3 do
-      if rainbow_mode and pt.val and (xarg.group_name == "LargeGrid") then
-        
-        
-        local x = xarg.row or 0 
-        local y = xarg.column or 0
-        --print(x, y)
-        local color_code = (-3 + x + y + ((y % 2) * 6)) % 12 + 1 --> magic number dance
-        --print(color_code)
-        sysex_color[i] = math.floor(color_reference_12[color_code][i])
-        
-      else
-        sysex_color[i] = math.floor(pt.color[i]/8)
-      end
-      rslt = rslt * 64 + sysex_color[i]
-    end    
+          ------------------------------------------------------------------1st
+          if color_set == 1 then
+            -- first color algorithm using a table     
+            sysex_color = color_reference_12[((note_value + color_offset)%12)+1]
+            rslt = (sysex_color[1] * 64 + sysex_color[2]) * 64 + sysex_color[3]
+
+          ------------------------------------------------------------------2nd
+          elseif color_set == 2 then
+          -- second color algorithm, cosines
+          
+            note_value = ((note_value + color_offset) % 12) + 1 
+                                  
+            for i = 1, 3 do
+                          
+              -- convert the note to radians... it made sense in my head
+              local note_rad = 2 * math.pi * note_value / 12 
+              
+              local color_scale = 0.5 + 0.5 * math.cos(note_rad * 7)
+              
+              sysex_color[i] = math.floor(63 * color_scale) 
+              
+              rslt = rslt * 64 + sysex_color[i]
+              
+              note_value = (note_value + 3) % 12 + 1
+              
+            end
+           -----------------------------------------------------------------3rd
+          elseif color_set == 3 then
+          
+            note_value = ((note_value + color_offset + 1) % 12) + 1 
+                                  
+            for i = 1, 3 do
+                          
+              local note_rad = 2 * math.pi * note_value / 12 
+             
+              local color_scale = 0.5 + 0.5 * math.cos(note_rad * 5)
+              
+              sysex_color[i] = math.floor(63 * color_scale) 
+              
+              rslt = rslt * 64 + sysex_color[i]
+              
+              note_value = (note_value + 2) % 12 + 1 
+          
+            end
+   
+          end
+          
+          
+          
+        else
+          for i = 1, 3 do
+            sysex_color[i] = math.floor(pt.color[i]/8)
+            rslt = rslt * 64 + sysex_color[i]
+          end
+        end
+         
 
     self:send_sysex_message(0x00, 0x20, 0x29, 0x02, 0x18, 0x0B, sysex_num, sysex_color[1], sysex_color[2], sysex_color[3])
   
     return rslt, skip_hardware
 
 end
+
 
 --------------------------------------------------------------------------------
 -- A couple of sample configurations
